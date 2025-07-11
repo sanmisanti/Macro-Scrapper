@@ -60,3 +60,20 @@ python verify_credentials.py     # Verifica credenciales
 - Contraseñas de aplicación para Gmail
 - Validación SSL/TLS automática
 - User-Agent específico para evitar detección
+- .gitignore completo protege datos sensibles
+
+## Control de versiones
+- Repositorio Git inicializado
+- .env excluido del repositorio
+- Archivos sensibles protegidos por .gitignore
+- Commits con formato estándar
+
+## Posibles mejoras futuras
+- Programar ejecución automática (cron/Task Scheduler)
+- Agregar más tipos de notificaciones (SMS, Slack, etc.)
+- Implementar logs rotativos
+- Agregar múltiples cuentas bancarias
+- Crear interfaz web simple
+- Agregar métricas de ejecución
+- Implementar reintentos automáticos
+- Agregar alertas por email si falla el scraper
