@@ -85,45 +85,80 @@ class BankScraper:
     
     def get_balance(self):
         try:
-            # Buscar el elemento td con headers="_Saldo disponible"
-            balance_element = WebDriverWait(self.driver, 10).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, 'td[headers="_Saldo disponible"]'))
+            # Buscar todos los elementos td con headers="_Saldo disponible"
+            balance_elements = WebDriverWait(self.driver, 10).until(
+                EC.presence_of_all_elements_located((By.CSS_SELECTOR, 'td[headers="_Saldo disponible"]'))
             )
             
-            balance_text = balance_element.text
-            logger.info(f"Raw balance text: '{balance_text}'")
+            accounts = []
+            total_balance = 0
             
-            # Limpiar el texto para extraer el número
-            # Remover símbolos de moneda, espacios y convertir comas por puntos
-            clean_text = balance_text.replace('$', '').replace('ARS', '').replace(' ', '').replace(',', '.')
+            for i, balance_element in enumerate(balance_elements):
+                balance_text = balance_element.text
+                logger.info(f"Raw balance text for account {i+1}: '{balance_text}'")
+                
+                # Limpiar el texto para extraer el número
+                # Remover símbolos de moneda, espacios y convertir comas por puntos
+                clean_text = balance_text.replace('$', '').replace('ARS', '').replace(' ', '').replace(',', '.')
+                
+                # Buscar el número en el texto limpio
+                import re
+                numbers = re.findall(r'[-+]?\d*\.?\d+', clean_text)
+                
+                if numbers:
+                    balance_value = float(numbers[0])
+                    account_name = f"Cuenta{i+1}"
+                    accounts.append({
+                        'name': account_name,
+                        'balance': balance_value
+                    })
+                    total_balance += balance_value
+                    logger.info(f"Parsed balance for {account_name}: ${balance_value}")
+                else:
+                    logger.error(f"Could not parse balance from text for account {i+1}: '{balance_text}'")
             
-            # Buscar el número en el texto limpio
-            import re
-            numbers = re.findall(r'[-+]?\d*\.?\d+', clean_text)
-            
-            if numbers:
-                balance_value = float(numbers[0])
-                logger.info(f"Parsed balance: ${balance_value}")
-                return balance_value
+            if accounts:
+                logger.info(f"Total balance across all accounts: ${total_balance}")
+                return {
+                    'accounts': accounts,
+                    'total': total_balance
+                }
             else:
-                logger.error(f"Could not parse balance from text: '{balance_text}'")
+                logger.error("No valid balances found")
                 return None
             
         except Exception as e:
             logger.error(f"Could not get balance: {str(e)}")
             return None
     
-    def send_notification(self, balance):
+    def logout(self):
+        try:
+            logout_button = WebDriverWait(self.driver, 10).until(
+                EC.element_to_be_clickable((By.ID, "widgetLogoutBtn"))
+            )
+            logout_button.click()
+            logger.info("Logout successful")
+        except Exception as e:
+            logger.error(f"Logout failed: {str(e)}")
+    
+    def send_notification(self, balance_data):
         try:
             msg = MIMEMultipart()
             msg['From'] = self.email_from
             msg['To'] = self.email_to
-            msg['Subject'] = f"Balance Alert: ${balance}"
+            msg['Subject'] = f"Balance Alert: ${balance_data['total']}"
+            
+            # Crear detalle de cuentas
+            accounts_detail = ""
+            for account in balance_data['accounts']:
+                accounts_detail += f"  {account['name']}: ${account['balance']:,.2f}\n"
             
             body = f"""
             ¡Alerta de saldo!
             
-            Tu saldo actual es: ${balance:,.2f}
+            Detalle por cuenta:
+{accounts_detail}
+            Saldo total: ${balance_data['total']:,.2f}
             Este monto es mayor al límite establecido de: ${self.threshold_amount:,.2f}
             
             Fecha: {time.strftime('%Y-%m-%d %H:%M:%S')}
@@ -137,7 +172,7 @@ class BankScraper:
             server.send_message(msg)
             server.quit()
             
-            logger.info(f"Notification sent successfully for balance: ${balance}")
+            logger.info(f"Notification sent successfully for total balance: ${balance_data['total']}")
             
         except Exception as e:
             logger.error(f"Failed to send notification: {str(e)}")
@@ -149,17 +184,22 @@ class BankScraper:
             if not self.login():
                 return False
                 
-            balance = self.get_balance()
+            balance_data = self.get_balance()
             
-            if balance is None:
+            if balance_data is None:
                 return False
                 
-            if balance > self.threshold_amount:
-                logger.info(f"Balance ${balance} exceeds threshold ${self.threshold_amount}")
-                self.send_notification(balance)
+            total_balance = balance_data['total']
+            
+            if total_balance > self.threshold_amount:
+                logger.info(f"Total balance ${total_balance} exceeds threshold ${self.threshold_amount}")
+                self.send_notification(balance_data)
             else:
-                logger.info(f"Balance ${balance} is below threshold ${self.threshold_amount}")
+                logger.info(f"Total balance ${total_balance} is below threshold ${self.threshold_amount}")
                 
+            # Cerrar sesión
+            self.logout()
+            
             return True
             
         except Exception as e:
