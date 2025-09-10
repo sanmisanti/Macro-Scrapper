@@ -20,8 +20,9 @@ Scraper automatizado para Banco Macro que monitorea saldo y envía notificacione
 pip install -r requirements.txt
 
 # Ejecutar scraper
-python bank_scraper.py           # Modo headless
-python bank_scraper.py --debug   # Modo debug con ventana
+python bank_scraper.py           # Verificación única en modo headless
+python bank_scraper.py --debug   # Verificación única con ventana (debug)
+python bank_scraper.py --daemon  # Modo daemon (verificaciones cada 30 min)
 
 # Scripts de prueba
 python test_email.py             # Prueba solo email

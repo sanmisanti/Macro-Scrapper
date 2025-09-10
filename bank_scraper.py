@@ -1,5 +1,8 @@
 import os
 import time
+import signal
+import sys
+from datetime import datetime
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -13,7 +16,11 @@ import logging
 
 load_dotenv()
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 logger = logging.getLogger(__name__)
 
 class BankScraper:
@@ -210,14 +217,72 @@ class BankScraper:
             if self.driver:
                 self.driver.quit()
 
+def run_daemon():
+    """Ejecuta el scraper en modo daemon, verificando cada 30 minutos"""
+    logger.info("Iniciando Banco Macro Scraper en modo daemon")
+    logger.info("Verificaciones cada 30 minutos - Presiona Ctrl+C para detener")
+    
+    def signal_handler(signum, frame):
+        logger.info("Señal de interrupción recibida. Cerrando daemon...")
+        sys.exit(0)
+    
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+    
+    # Ejecutar inmediatamente la primera vez
+    run_single_check(headless=True)
+    
+    # Luego ejecutar cada 30 minutos
+    while True:
+        try:
+            logger.info(f"Esperando 30 minutos hasta la próxima verificación...")
+            time.sleep(1800)  # 30 minutos = 1800 segundos
+            run_single_check(headless=True)
+        except KeyboardInterrupt:
+            logger.info("Daemon detenido por el usuario")
+            break
+        except Exception as e:
+            logger.error(f"Error inesperado en daemon: {str(e)}")
+            logger.info("Continuando con el siguiente ciclo...")
+            time.sleep(60)  # Esperar 1 minuto antes del siguiente intento
+
+def run_single_check(headless=True, max_retries=3):
+    """Ejecuta una sola verificación con reintentos"""
+    for attempt in range(1, max_retries + 1):
+        try:
+            logger.info(f"=== Iniciando verificación (intento {attempt}/{max_retries}) ===")
+            scraper = BankScraper()
+            success = scraper.check_balance_and_notify(headless=headless)
+            
+            if success:
+                logger.info("Verificación completada exitosamente")
+                return True
+            else:
+                logger.warning(f"Verificación falló en intento {attempt}")
+                
+        except Exception as e:
+            logger.error(f"Error en intento {attempt}: {str(e)}")
+            
+        if attempt < max_retries:
+            wait_time = attempt * 60  # Esperar 60, 120, 180 segundos
+            logger.info(f"Esperando {wait_time} segundos antes del siguiente intento...")
+            time.sleep(wait_time)
+    
+    logger.error(f"Verificación falló después de {max_retries} intentos")
+    return False
+
 def main():
-    import sys
-    
-    # Agregar opción para modo debug (no headless)
-    debug_mode = '--debug' in sys.argv
-    
-    scraper = BankScraper()
-    scraper.check_balance_and_notify(headless=not debug_mode)
+    # Verificar argumentos de línea de comandos
+    if '--daemon' in sys.argv:
+        run_daemon()
+    elif '--debug' in sys.argv:
+        # Modo debug: una sola ejecución con ventana visible
+        logger.info("Ejecutando en modo debug (una sola vez)")
+        run_single_check(headless=False)
+    else:
+        # Modo normal: una sola ejecución headless
+        logger.info("Ejecutando verificación única")
+        run_single_check(headless=True)
 
 if __name__ == "__main__":
     main()
